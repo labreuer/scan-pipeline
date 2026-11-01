@@ -1,0 +1,4 @@
+[submodule "scantailor-advanced"]
+	path = scantailor-advanced
+	url = git@github.com:labreuer/scantailor-advanced.git
+	branch = scan-pipeline
