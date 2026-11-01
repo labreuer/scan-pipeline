@@ -154,6 +154,10 @@ set it back to Auto in the GUI's Deskew stage (Apply to… for many pages), or c
 Related: 1.2.1 also gives every *new* page automatic shear correction, whatever the
 default profile says. `deskew/Utils.cpp` `buildDefaultParams()` hard-codes `MODE_AUTO`.
 Commit 04cb7364 had made it follow the profile; commit 9c347201 put `MODE_AUTO` back.
+The submodule's `scan-pipeline` branch fixes this (77c13452): new pages follow the
+profile, whose auto oblique option is off by default, as the Windows build never
+sheared. A project processed before the fix keeps its shear correction until it is
+processed again from a fresh initial project.
 
 ### After converting
 
