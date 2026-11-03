@@ -17,6 +17,8 @@ ScanTailor project. The book folders stay in `~/scan`; this repo holds only the 
   ScanTailor Advanced 1.2.1. That branch adds `scantailor-batch` (`src/batch/`), which runs
   ScanTailor's stages through Margins without the GUI. It is built from ScanTailor's own
   internal code, so it only works with the ScanTailor version the submodule pins.
+- **`unpencil.py`**, **`unpencil_fix.py`** and **`unpencil_review.py`** take a reader's
+  pencil (underlines, margin bars) off gray scans before ScanTailor sees them (below).
 
 ## Setup
 
@@ -48,6 +50,36 @@ there; set `SCANTAILOR_BATCH` to use another.
 ~/git/scan-pipeline/newscan.py
 ~/git/scan-pipeline/scantailor-advanced/build/scantailor-advanced ~/scan/TGR/TGR.ScanTailor
 ```
+
+## Pencil in a book
+
+A reader's pencil on gray scans (a ScanSnap's 600 dpi) comes off before ScanTailor, on the
+scans themselves, so that the deskew and content boxes, ScanTailor's output and the OCR all see
+the pages clean. First used on Kuhn's *Structure of Scientific Revolutions* (`~/scan/TSoSR`,
+2026-11-02: 36 pages of 224).
+
+1. **`unpencil.py SRC OUT`** finds the strokes on each `i_*.png` and writes the pages it changed
+   to `OUT` (with `OUT/masks/`, what it erased, and `OUT/unpencil.tsv`). A page with no pencil
+   is not written. Its docstring says how it tells graphite from print, and what it can't do (pencil along a
+   word's feet; a short tick that is no long stroke).
+2. **`unpencil_review.py SRC OUT`** serves the changed pages on `127.0.0.1:8765`, what was
+   erased in red, the original a key away. Box what it got wrong; the boxes are saved as
+   `SRC/unpencil-review.json`.
+3. **`unpencil_fix.py SRC OUT FIXES.tsv`** applies hand fixes, box by box, kept in a file so
+   that they come back whenever step 1 is run again: `free` (loose graphite in a box),
+   `lighter` (pixels lighter than print), `paper` (the whole box), `restore` (the scan as it
+   was). Use `paper` rectangles from exact component boxes, not `free` or `lighter`
+   unchecked: `free` takes i dots and periods, and `lighter` takes pale print.
+4. **Install**: the originals into `SRC/marked/` (with the masks and a README giving the
+   commands, so that the pages can be made again from `marked/`), the cleaned pages in their
+   place; then a fresh project, `newscan.py ACRONYM`.
+5. **Check**: a margin mark the script missed widens that page's content box past the text
+   block's (TSoSR's p. 10: a bracket whose hook joined an "f").
+
+Letters with pencil fused to them, or print the cleaner erased (a g's loop) and the scan put
+back there, can't be separated on the scan: list them (TSoSR's `TSoSR.unpencil-stamp.tsv`:
+image, box) for the drawing stage to draw anew from the book's own glyphs (`glyphs.py` in
+`~/booktext`).
 
 ## Updating ScanTailor
 
