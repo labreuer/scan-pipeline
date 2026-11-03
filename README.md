@@ -66,6 +66,19 @@ cd .. && git commit -am "Update ScanTailor Advanced"
 After an update, check `scantailor-batch` on a project, since upstream may have changed
 the internal code it is built from.
 
+The branch's changes to ScanTailor itself, besides `scantailor-batch`:
+
+- **New pages follow the profile's auto oblique** (77c13452; see "Converting ScanTailor
+  projects" below).
+- **Savitzky-Golay smoothing off by default** (c8be5973), for a page with no output settings
+  yet, in the GUI and in `scantailor-batch`. Upstream has it on. It blurs the grayscale before
+  the threshold. On *What Coleridge Thought* (600 dpi) it thickened every stroke, by 6% of the
+  scanner's ink on 1-bit scans and 17% on gray ones, and it wiped out thin parts: the pages
+  showed periods for commas and colons for semicolons. With it off, the 1-bit pages keep the
+  scanner's ink within 1% and every comma. A project whose pages already have output settings
+  keeps them. To turn it off there: `sed -i 's/savitzkyGolaySmoothing="1"/savitzkyGolaySmoothing="0"/g'
+  PROJECT`, then `--through output` again.
+
 ## Converting ScanTailor projects from version 3 to 4
 
 The ScanTailor Advanced in the `scantailor-advanced` submodule (v1.2.1) writes
