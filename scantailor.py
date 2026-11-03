@@ -301,6 +301,34 @@ class Page(_View):
         return f"<Page id={self.id} {f.name if f else '?'} {self.sub_page}>"
 
 
+def page_transform(pg):
+    """The 2x3 affine (a numpy array) from the raw image's pixels to the output page's, as
+    ScanTailor made it: its deskew (page outline to rotated page outline), then the content
+    box moved to where the output put it (or, with no content, the crop area).
+
+    The same arithmetic as booktext's surya_pdf.page_transform, which drew boxes from the raw
+    scan onto the output pages first. drawn_view.py uses its inverse to put a drawing back
+    onto the raw scans. numpy is needed only here."""
+    import numpy as np
+
+    def pts(el):
+        return [(float(q.get("x")), float(q.get("y"))) for q in el.findall("point")]
+    po = pts(pg.deskew.params.find("dependencies/page-outline"))
+    rpo = pts(pg.select_content.params.find("dependencies/rotated-page-outline"))
+    src = np.array([po[0], po[1], po[3]])
+    dst = np.array([rpo[0], rpo[1], rpo[3]])
+    M = np.linalg.solve(np.column_stack([src, np.ones(3)]), dst).T
+    vc = pg.select_content.content_rect
+    oc = pg.output.element.find("output-params/image/content-rect")
+    if vc.width and vc.height:
+        M[:, 2] += (float(oc.get("x")) - vc.x, float(oc.get("y")) - vc.y)
+    else:
+        # no content: the crop area, the image's outline as the output has it
+        ca = pts(pg.output.element.find("output-params/image/crop-area"))
+        M[:, 2] += np.array(ca[0]) - M @ np.array([po[0][0], po[0][1], 1.0])
+    return M
+
+
 class _Stage(_View):
     """A filter's entry for one page: <filters>/<name>/<page id=...>."""
     __slots__ = ("page",)

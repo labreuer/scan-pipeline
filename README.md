@@ -18,7 +18,11 @@ ScanTailor project. The book folders stay in `~/scan`; this repo holds only the 
   ScanTailor's stages through Margins without the GUI. It is built from ScanTailor's own
   internal code, so it only works with the ScanTailor version the submodule pins.
 - **`unpencil.py`**, **`unpencil_fix.py`** and **`unpencil_review.py`** take a reader's
-  pencil (underlines, margin bars) off gray scans before ScanTailor sees them (below).
+  pencil (underlines, margin bars) off gray scans before ScanTailor sees them.
+  **`drawn_view.py`** turns the drawing booktext makes back onto the raw scans, so the review
+  can check it too (below).
+- **`scantailor.py`** also gives `page_transform(page)`, ScanTailor's map from a raw scan's
+  pixels to its output page's.
 
 ## Setup
 
@@ -76,10 +80,25 @@ the pages clean. First used on Kuhn's *Structure of Scientific Revolutions* (`~/
 5. **Check**: a margin mark the script missed widens that page's content box past the text
    block's (TSoSR's p. 10: a bracket whose hook joined an "f").
 
-Letters with pencil fused to them, or print the cleaner erased (a g's loop) and the scan put
-back there, can't be separated on the scan: list them (TSoSR's `TSoSR.unpencil-stamp.tsv`:
-image, box) for the drawing stage to draw anew from the book's own glyphs (`glyphs.py` in
-`~/booktext`).
+Some letters can't be cleaned on the scan: those with pencil fused to them, and those where
+the cleaner erased print (a g's loop) and the scan was put back there. List them in a stamp
+list (TSoSR's `TSoSR.unpencil-stamp.tsv`: image, box in the raw scan's pixels, why). The
+drawing stage then draws them anew from the book's own glyphs: `glyphs.py pdf --zones` in
+`~/booktext`, with the boxes mapped onto the output pages by `page_transform`.
+
+The review continues on the drawing:
+
+6. **Draw** with `glyphs.py pdf --zones ZONES.tsv --red`, which shows in red the ink the
+   drawing kept as the scan has it.
+7. **`drawn_view.py PROJECT DRAWING.pdf OUT DRAWN`** turns each changed page of that drawing
+   back onto its raw scan. **`unpencil_review.py SRC OUT --drawn DRAWN`** then shows it at
+   key D, in the same pixels as the cleaned page, its original and the boxes.
+8. **Look for leftovers.** Pencil the drawing kept shows red where the cleaner's masks touch
+   it. Box what is wrong, add those boxes to the stamp list, and draw again.
+
+On TSoSR the stamp list's mapping, the leftovers search and the join from review boxes to the
+stamp list were still per-book scripts (`runs/TSoSR/work/zones.py`, `leftovers.py`). TSoSR's
+own record of the whole run, with every command, is `~/scan/TSoSR/marked/README.md`.
 
 ## Updating ScanTailor
 
