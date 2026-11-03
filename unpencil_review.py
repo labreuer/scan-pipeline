@@ -2,7 +2,7 @@
 """Review unpencil.py's work in a browser: page through the pages it changed, the pencil it erased
 shown in red (on or off), the original scan at a key, and draw boxes around what it got wrong.
 
-usage: unpencil_review.py SRC_DIR CLEAN_DIR [--boxes FILE] [--port N]
+usage: unpencil_review.py SRC_DIR CLEAN_DIR [--boxes FILE] [--port N] [--drawn DIR]
 
 SRC_DIR: the scans (i_*.png); CLEAN_DIR: unpencil.py's OUT_DIR (its pages, masks/ and
 unpencil.tsv). The boxes are saved as you draw them to FILE (default SRC_DIR/unpencil-review.json),
@@ -10,7 +10,11 @@ in each page image's own pixels:
     {"pages": {"i_0054_0.png": [{"id", "x0", "y0", "x1", "y1", "kind", "note", "created"}]}}
 The red overlay is made once into CLEAN_DIR/overlay/. Served on 127.0.0.1 only.
 
-Keys: Left/Right or PgUp/PgDn page; R red on/off; O original scan (with its pencil) on/off;
+--drawn DIR adds a third view (key D): each page as the drawing stage drew it anew (glyphs.py),
+turned back onto its scan so that boxes stay in the scan's pixels, the ink the drawing kept as
+scanned in red when it was made with --red.
+
+Keys: Left/Right or PgUp/PgDn page; R red on/off; O original scan (with its pencil) on/off; D drawn;
 +/- zoom, F fit width, 1 actual pixels (also Ctrl+wheel); drag on the page to draw a box;
 click a box to select it, Delete removes it; Esc unselects.
 """
@@ -64,6 +68,7 @@ def pages_of(clean, offset):
 class App:
     def __init__(self, src, clean, boxes_path, pages):
         self.src, self.clean, self.boxes_path, self.pages = src, clean, boxes_path, pages
+        self.drawn = None
         self.names = {p["name"] for p in pages}
         self.lock = threading.Lock()
         if os.path.exists(boxes_path):
@@ -108,7 +113,8 @@ def handler(app):
         def do_GET(self):
             path = unquote(urlparse(self.path).path)
             if path == "/":
-                return self.send(200, PAGE.encode(), "text/html; charset=utf-8")
+                page = PAGE.replace("const HAS_DRAWN = false;", f"const HAS_DRAWN = {'true' if app.drawn else 'false'};")
+                return self.send(200, page.encode(), "text/html; charset=utf-8")
             if path == "/pages.json":
                 return self.send(200, json.dumps(app.pages).encode(), "application/json")
             if path == "/boxes":
@@ -117,8 +123,8 @@ def handler(app):
             if len(parts) == 3 and parts[0] == "img" and parts[2] in app.names:
                 kind, name = parts[1], parts[2]
                 where = {"orig": app.src, "clean": app.clean,
-                         "red": os.path.join(app.clean, "overlay")}.get(kind)
-                if where:
+                         "red": os.path.join(app.clean, "overlay"), "drawn": app.drawn}.get(kind)
+                if where and os.path.exists(os.path.join(where, name)):
                     with open(os.path.join(where, name), "rb") as f:
                         return self.send(200, f.read(), "image/png", cache=True)
             self.send(404, b"not found", "text/plain")
@@ -193,6 +199,7 @@ rect.draft { fill:none; stroke:var(--box); stroke-width:2; stroke-dasharray:6 4;
     <div class="row">
       <button id="red" title="R">Red (R)</button>
       <button id="orig" title="O">Original (O)</button>
+      <button id="drawn" title="D">Drawn (D)</button>
     </div>
     <div class="row">
       <button id="zout" title="-">&minus;</button><button id="zin" title="+">+</button>
@@ -206,7 +213,7 @@ rect.draft { fill:none; stroke:var(--box); stroke-width:2; stroke-dasharray:6 4;
   <div id="status">loading&hellip;</div>
 </div>
 <div id="view"><div id="stage">
-  <img id="i-clean" alt=""><img id="i-orig" alt=""><img id="i-red" alt="">
+  <img id="i-clean" alt=""><img id="i-orig" alt=""><img id="i-drawn" alt=""><img id="i-red" alt="">
   <svg id="svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
 </div></div>
 <div id="tag"></div>
@@ -216,7 +223,8 @@ const KINDS = ["pencil left", "print erased or damaged", "other"];
 const $ = id => document.getElementById(id);
 const view = $("view"), stage = $("stage"), svg = $("svg");
 let pages = [], data = {pages: {}}, cur = 0, zoom = 0, W = 0, H = 0;
-let red = true, orig = false, sel = null, saveTimer = null;
+let red = true, orig = false, drawn = false, sel = null, saveTimer = null;
+const HAS_DRAWN = false;
 
 function store(k, v) { try { localStorage.setItem("unpencil." + k, JSON.stringify(v)); } catch (e) {} }
 function recall(k, d) { try { const v = localStorage.getItem("unpencil." + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
@@ -251,12 +259,17 @@ function setZoom(z, cx, cy) {
 function fit() { if (W) { setZoom((view.clientWidth - 20) / W); view.scrollLeft = 0; } }
 
 function layers() {
-  $("i-orig").style.visibility = orig ? "visible" : "hidden";
-  $("i-clean").style.visibility = orig ? "hidden" : "visible";
-  $("i-red").style.visibility = red ? "visible" : "hidden";
+  // the drawn page (glyphs.py's drawing, turned back onto the scan; its own red is ink it kept as
+  // scanned) over the original, over the cleaned; the cleaner's red only over the scans
+  const d = HAS_DRAWN && drawn;
+  $("i-drawn").style.visibility = d ? "visible" : "hidden";
+  $("i-orig").style.visibility = !d && orig ? "visible" : "hidden";
+  $("i-clean").style.visibility = !d && !orig ? "visible" : "hidden";
+  $("i-red").style.visibility = !d && red ? "visible" : "hidden";
   $("red").classList.toggle("on", red); $("orig").classList.toggle("on", orig);
-  $("tag").textContent = (orig ? "ORIGINAL" : "CLEANED") + (red ? " + red" : "");
-  store("red", red); store("orig", orig);
+  $("drawn").classList.toggle("on", d); $("drawn").style.display = HAS_DRAWN ? "" : "none";
+  $("tag").textContent = d ? "DRAWN (red: kept as scanned)" : (orig ? "ORIGINAL" : "CLEANED") + (red ? " + red" : "");
+  store("red", red); store("orig", orig); store("drawn", drawn);
 }
 
 function show(i, keepScroll) {
@@ -275,9 +288,10 @@ function show(i, keepScroll) {
   img.src = "/img/clean/" + p.name;
   $("i-orig").src = "/img/orig/" + p.name;
   $("i-red").src = "/img/red/" + p.name;
+  if (HAS_DRAWN) $("i-drawn").src = "/img/drawn/" + p.name;
   // fetch the next page's images ahead
   const n = pages[(cur + 1) % pages.length].name;
-  for (const k of ["clean", "orig", "red"]) (new Image()).src = `/img/${k}/${n}`;
+  for (const k of HAS_DRAWN ? ["clean", "orig", "red", "drawn"] : ["clean", "orig", "red"]) (new Image()).src = `/img/${k}/${n}`;
   store("cur", cur);
   list(); draw();
 }
@@ -398,6 +412,7 @@ document.addEventListener("keydown", e => {
   else if (k === "ArrowLeft" || k === "PageUp") show(cur - 1);
   else if (k === "r" || k === "R") { red = !red; layers(); }
   else if (k === "o" || k === "O") { orig = !orig; layers(); }
+  else if ((k === "d" || k === "D") && HAS_DRAWN) { drawn = !drawn; layers(); }
   else if (k === "+" || k === "=") setZoom(zoom * 1.25);
   else if (k === "-" || k === "_") setZoom(zoom / 1.25);
   else if (k === "f" || k === "F") fit();
@@ -409,6 +424,7 @@ document.addEventListener("keydown", e => {
 });
 $("prev").onclick = () => show(cur - 1); $("next").onclick = () => show(cur + 1);
 $("red").onclick = () => { red = !red; layers(); }; $("orig").onclick = () => { orig = !orig; layers(); };
+$("drawn").onclick = () => { drawn = !drawn; layers(); };
 $("zin").onclick = () => setZoom(zoom * 1.25); $("zout").onclick = () => setZoom(zoom / 1.25);
 $("fit").onclick = fit; $("one").onclick = () => setZoom(1);
 
@@ -416,7 +432,7 @@ $("fit").onclick = fit; $("one").onclick = () => setZoom(1);
   pages = await (await fetch("/pages.json")).json();
   data = await (await fetch("/boxes")).json();
   if (!data.pages) data.pages = {};
-  red = recall("red", true); orig = recall("orig", false); zoom = recall("zoom", 0);
+  red = recall("red", true); orig = recall("orig", false); drawn = recall("drawn", false); zoom = recall("zoom", 0);
   layers();
   const n = Object.values(data.pages).reduce((s, b) => s + b.length, 0);
   status(n ? `${n} box${n === 1 ? "" : "es"} loaded` : "no boxes yet");
@@ -434,6 +450,8 @@ def main():
     ap.add_argument("--boxes")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--offset", type=int, default=11, help="printed page = image number - N")
+    ap.add_argument("--drawn", help="the pages as the drawing stage drew them, turned back onto the scans "
+                    "(one image per scan, by its name, in its geometry): a third view, key D")
     a = ap.parse_args()
     src, clean = os.path.abspath(a.src), os.path.abspath(a.clean)
     boxes = a.boxes or os.path.join(src, "unpencil-review.json")
@@ -442,6 +460,7 @@ def main():
     with Pool(8) as pool:
         pool.map(make_overlay, [(src, clean, p["name"], p["paper"], p["ink"]) for p in pages])
     app = App(src, clean, boxes, pages)
+    app.drawn = os.path.abspath(a.drawn) if a.drawn else None
     for port in range(a.port, a.port + 20):
         try:
             srv = ThreadingHTTPServer(("127.0.0.1", port), handler(app))
