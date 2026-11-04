@@ -23,6 +23,9 @@ ScanTailor project. The book folders stay in `~/scan`; this repo holds only the 
   can check it too (below).
 - **`scantailor.py`** also gives `page_transform(page)`, ScanTailor's map from a raw scan's
   pixels to its output page's.
+- **`st_lean.py`** measures how far a project's pages lean and sets the shear that takes it out;
+  **`st_marks.py`** finds the marks that set its content boxes and narrows the boxes named (below,
+  "Straight pages and clean boxes").
 - **`stview.py`** shows in a browser, page by page, where a project's content boxes sit on the
   scans and where ScanTailor's Page Layout stage will put them (below). `~/bin/stview.py`
   links to it.
@@ -102,6 +105,34 @@ The review continues on the drawing:
 On TSoSR the stamp list's mapping, the leftovers search and the join from review boxes to the
 stamp list were still per-book scripts (`runs/TSoSR/work/zones.py`, `leftovers.py`). TSoSR's
 own record of the whole run, with every command, is `~/scan/TSoSR/marked/README.md`.
+
+## Straight pages and clean boxes: `st_lean.py`, `st_marks.py`
+
+A sheet-fed scan can come out sheared, its rows of print level and its margins leaning, and one
+fleck in a margin sets a content box and, through it, the page size of the whole book. Both tools
+read the project's output pages, so run them after `scantailor-batch --through output`, in this order,
+before Page Layout's margins are settled. The whole account, with what they found on Jonas's
+*The Gnostic Religion*, is in `~/booktext/ocr/README.md`.
+
+```
+st_lean.py PROJECT [--tsv OUT.tsv]    # what each page leans; full rows of print alone
+st_lean.py PROJECT --apply            # oblique on pages at --min degrees (0.25) or more
+scantailor-batch --through output --jobs 16 -q PROJECT   # and again till none is left
+
+st_marks.py find PROJECT REPORT.json --crops SHEET.png   # proposals: look at each
+st_marks.py apply PROJECT REPORT.json --pages 193,231 --rows 73,78
+scantailor-batch --through output --jobs 16 -q PROJECT
+st_marks.py lost PROJECT OLD_PROJECT OLD_OUT --pages 193,231   # what went
+st_marks.py find PROJECT NEW_REPORT.json
+```
+
+PAGES count from 1 in the project's order. ScanTailor shears by tan(angle / 2), so a page leaning L
+takes an oblique of 2L; its automatic oblique did that book no good. `st_lean.py` keeps a fit only
+over enough rows and a small residual, and leaves the rest alone and listed. A page it shears has its
+hand-set box put back to automatic, so boxes come after it. `st_marks.py find` writes nothing, and takes
+real print for marks now and then (the i of "ing" on an indented page, the ear of a g), so `apply`
+touches only pages named, and refuses a report older than the box. `--rows` sets a page's sides from
+its full rows of print, for a reader's notes in a margin. Their docstrings say how each decides.
 
 ## Alignment and margins: `stview.py`
 
