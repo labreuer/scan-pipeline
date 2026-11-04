@@ -24,8 +24,9 @@ Three views:
 Keys: Left/Right page (two at a time with "Step 2"), Home/End, M switches view,
 click pins a guide, Esc clears it.
 
-It doesn't model shear (ScanTailor 1.2's oblique correction in Deskew); a page
-with shear is drawn unsheared, with a warning.
+Shear (ScanTailor 1.2's oblique correction in Deskew) is drawn as ScanTailor applies
+it, after the rotation: x' = x - tan(oblique / 2) * y, so a margin's lean moves by half the
+oblique angle.
 """
 import argparse
 import http.server
@@ -89,6 +90,11 @@ def rotation(deg):
         t = math.radians(deg)
         c, s = math.cos(t), math.sin(t)
     return (c, s, -s, c, 0.0, 0.0)
+
+
+def shear(deg):
+    """ScanTailor's oblique correction (ImageTransformation::calcPostRotateXform): half the angle."""
+    return (1.0, 0.0, -math.tan(math.radians(deg) / 2), 1.0, 0.0, 0.0)
 
 
 def apply(m, p):
@@ -181,15 +187,11 @@ def parse_project(path):
         m_orient = shifted_to_origin(rotation(deg), [[0, 0], [w, 0], [w, h], [0, h]])
         ow, oh = (h, w) if int(round(deg / 90)) % 2 else (w, h)
         outline = ds.get('outline') or [[0, 0], [ow, 0], [ow, oh], [0, oh]]
-        m_deskew = shifted_to_origin(rotation(ds.get('angle', 0.0)), outline)
+        m_deskew = shifted_to_origin(compose(shear(ds.get('oblique', 0.0)), rotation(ds.get('angle', 0.0))), outline)
         poly = [apply(m_deskew, p) for p in outline]
         ro = sc.get('routline')
         err = max(math.dist(p, q) for p, q in zip(poly, ro)) if ro and len(ro) == len(poly) else None
-        if abs(ds.get('oblique', 0.0)) > 1e-6:
-            warn.append('Deskew also corrects shear (oblique %.2f°) on this page, which this viewer '
-                        'doesn\'t model: the page is drawn unsheared%s.'
-                        % (ds['oblique'], '' if err is None else ', its outline %.1f px off ScanTailor\'s' % err))
-        elif err is not None and err > 0.5:
+        if err is not None and err > 0.5:
             warn.append('Deskew and Select Content disagree about the page outline by %.1f px; '
                         'Select Content may need re-running.' % err)
         if abs(im['dpix'] - im['dpiy']) > 0.5:
@@ -222,7 +224,7 @@ def parse_project(path):
         xs, ys = [p[0] for p in poly], [p[1] for p in poly]
         pages.append(dict(
             i=i, id=pid, sub=pg.get('subPage') or 'single', image=name, fileId=im['file'], fileImage=im['n'],
-            imgW=w, imgH=h, dpi=im['dpix'], rotation=deg, angle=ds.get('angle', 0.0),
+            imgW=w, imgH=h, dpi=im['dpix'], rotation=deg, angle=ds.get('angle', 0.0), oblique=ds.get('oblique', 0.0),
             M=compose(m_deskew, m_orient), poly=poly, bbox=[max(xs), max(ys)],
             pageRect=sc.get('page'), content=cr, sizeMM=size_mm, storedMM=stored_mm, stale=stale, mmpp=mmpp,
             margins=lo['margins'], vert=lo['vert'], hor=lo['hor'], null=lo['null'], warn=warn))
@@ -881,7 +883,7 @@ function info() {
        '<div>Size</div><div>' + (p.content ? Math.round(p.content[2]) + ' × ' + Math.round(p.content[3]) + ' px · ' + f1(p.sizeMM[0], 1) + ' × ' + f1(p.sizeMM[1], 1) + ' mm' : 'none (blank page)') + '</div>' +
        (p.content ? '<div>At (source)</div><div>x ' + Math.round(p.content[0]) + ', y ' + Math.round(p.content[1]) + ' px</div>' : '') +
        '<div>Output page</div><div>' + f1(W, 1) + ' × ' + f1(H, 1) + ' mm</div>' +
-       '<div>Deskew</div><div>' + f1(p.angle, 3) + '°' + (p.rotation ? ' · orientation ' + p.rotation + '°' : '') + '</div>' +
+       '<div>Deskew</div><div>' + f1(p.angle, 3) + '°' + (p.oblique ? ' · oblique ' + f1(p.oblique, 3) + '°' : '') + (p.rotation ? ' · orientation ' + p.rotation + '°' : '') + '</div>' +
        (p.pageRect ? '<div>Page box</div><div>' + p.pageRect.map(v => Math.round(v)).join(', ') + ' px</div>' : '') +
        '<div>Image</div><div>' + Math.round(p.imgW) + ' × ' + Math.round(p.imgH) + ' px @ ' + Math.round(p.dpi) + ' dpi</div></div>';
   if (p.warn.length) s += '<h2>Notes</h2>' + p.warn.map(t => '<div class="warn">' + esc(t) + '</div>').join('');

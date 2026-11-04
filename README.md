@@ -175,8 +175,9 @@ What it works out, from the project file alone:
   on GtS (142 even and 145 odd full pages) the median move is 0, and 95% of them move less than
   2 mm across and 0.9 mm up or down, from how each page lay on the scanner. An opener aligned to
   the bottom shows how far ScanTailor moves it down.
-- **Not modelled**: shear (ScanTailor 1.2's oblique correction in Deskew). A page with shear is
-  drawn without it, with a warning. `auto` and `original` alignment are drawn as centred, also
+- **Shear** (ScanTailor 1.2's oblique correction in Deskew) is drawn as ScanTailor applies it, after
+  the rotation, x' = x - tan(oblique / 2) * y, and the side panel gives the angle. On TGR's 167 sheared
+  pages the outline it computes is ScanTailor's. `auto` and `original` alignment are drawn as centred,
   with a warning.
 
 Checked 2026-11-04:
