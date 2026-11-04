@@ -23,6 +23,9 @@ ScanTailor project. The book folders stay in `~/scan`; this repo holds only the 
   can check it too (below).
 - **`scantailor.py`** also gives `page_transform(page)`, ScanTailor's map from a raw scan's
   pixels to its output page's.
+- **`stview.py`** shows in a browser, page by page, where a project's content boxes sit on the
+  scans and where ScanTailor's Page Layout stage will put them (below). `~/bin/stview.py`
+  links to it.
 
 ## Setup
 
@@ -99,6 +102,65 @@ The review continues on the drawing:
 On TSoSR the stamp list's mapping, the leftovers search and the join from review boxes to the
 stamp list were still per-book scripts (`runs/TSoSR/work/zones.py`, `leftovers.py`). TSoSR's
 own record of the whole run, with every command, is `~/scan/TSoSR/marked/README.md`.
+
+## Alignment and margins: `stview.py`
+
+```
+cd ~/scan/GtS && stview.py
+```
+
+It serves a viewer on `127.0.0.1:8765` (or the next free port) and opens it in the browser. A
+dropdown lists the folder's `*.ScanTailor` files, newest first. The chosen one is read again
+whenever it changes on disk, so a change saved in ScanTailor shows a moment later. It needs only
+the standard library, and Pillow for TIFF scans.
+
+Three views (key M):
+
+- **Absolute**: the deskewed scan, at one scale for every page, with its content box, to compare
+  where the content sits from page to page.
+- **Unaligned**: the content where it sat on its scan, against the max content box as placed on
+  that parity's scans, and a dotted box where ScanTailor will put it. The side panel says how far
+  ScanTailor moves it.
+- **Output**: the page as Page Layout will make it: the page size, this page's hard and soft
+  margins, and the max content box (the page less the usual margins).
+
+Left/Right go page by page, or two at a time with **Step 2** to stay on one side of the spread.
+A click pins a guide line, kept between Unaligned and Output; Esc clears it. The side panel gives
+the page's alignment, its margins (hard, soft and to the page's edge, with a page's own margins
+marked), its content box and any warnings.
+
+What it works out, from the project file alone:
+
+- **The layout** is ScanTailor's own arithmetic, not its output files. The page size is the
+  largest content box plus hard margins among the aligned pages, and each page's alignment splits
+  what is left over into its soft margins. So it shows what the current settings will give before
+  Output is run. Page Layout keeps each page's content size from when it last processed that page;
+  the viewer uses Select Content's, and warns on pages where the two differ.
+- **Unaligned** needs to know where the max box sits on the scans. For each parity (even and odd
+  page index, or the left and right halves of split spreads) it takes the full text pages, those
+  whose content box is at least 95% of the max box both ways, and places the box as their most
+  common alignment places them: at the median of their top edges, for pages aligned to the top.
+  Each page then shows where its own content sat against that box. A full text page hardly moves:
+  on GtS (142 even and 145 odd full pages) the median move is 0, and 95% of them move less than
+  2 mm across and 0.9 mm up or down, from how each page lay on the scanner. An opener aligned to
+  the bottom shows how far ScanTailor moves it down.
+- **Not modelled**: shear (ScanTailor 1.2's oblique correction in Deskew). A page with shear is
+  drawn without it, with a warning. `auto` and `original` alignment are drawn as centred, also
+  with a warning.
+
+Checked 2026-11-04:
+
+- **Deskew**: on every page without shear in the 103 project files in `~/scan` and
+  `/srv/share/scans` (30,510 pages; versions 3, 4 and none; split spreads, and pages turned 90°
+  and 180°), the page outline it computes is ScanTailor's `rotated-page-outline` within 0.01 px.
+  The 853 pages left are TGR's three projects' pages with shear.
+- **Layout**: on every project in `~/scan` with output (GtS, ISM's two, SMEB, TSoSR, WCT: 1,067
+  pages), its page size and content position are the ones ScanTailor made the output with (each
+  page's `output-params`), within half a pixel. The exception is GtS (aligned), whose output was
+  made before its alignment was changed.
+
+First used 2026-10-31 on GtS, to choose which pages to align to the top, the bottom or the
+centre: `~/scan/GtS/GtS (aligned).ScanTailor`.
 
 ## Updating ScanTailor
 
