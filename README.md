@@ -127,8 +127,12 @@ The branch's changes to ScanTailor itself, besides `scantailor-batch`:
   scanner's ink on 1-bit scans and 17% on gray ones, and it wiped out thin parts: the pages
   showed periods for commas and colons for semicolons. With it off, the 1-bit pages keep the
   scanner's ink within 1% and every comma. A project whose pages already have output settings
-  keeps them. To turn it off there: `sed -i 's/savitzkyGolaySmoothing="1"/savitzkyGolaySmoothing="0"/g'
-  PROJECT`, then `--through output` again.
+  keeps them. To turn it off there, change the pages' settings alone, then run `--through output`
+  again:
+  `sed -i '/<output-params>/,/<\/output-params>/!s/savitzkyGolaySmoothing="1"/savitzkyGolaySmoothing="0"/g' PROJECT`.
+  Each page's `<output-params>` records what its file was made with, and ScanTailor writes a page
+  again only where its settings differ from that record. A `sed` over the whole file changes the
+  record too, and `--through output` then writes nothing (*Governing the Soul*: none of 352 pages).
 
 ## Converting ScanTailor projects from version 3 to 4
 
