@@ -3,8 +3,8 @@
 Linux tools for turning a book scanned on the Windows machine (lab-i8700k) into a
 ScanTailor project. The book folders stay in `~/scan`; this repo holds only the code.
 
-- **`newscan.py`** takes the newest PDF in `D:\scan` and moves it to
-  `~/scan/<ACRONYM>/<ACRONYM>_source.pdf`. It then extracts the page images, writes the
+- **`newscan.py`** takes the newest PDF in `D:\scan`, or the one `--pdf NAME` names, and moves
+  it to `~/scan/<ACRONYM>/<ACRONYM>_source.pdf`. It then extracts the page images, writes the
   initial ScanTailor project and runs ScanTailor through Margins. `newscan.py ACRONYM`
   redoes the last two steps for a folder already in `~/scan`.
 - **`scantailor.py`** reads `.ScanTailor` files into memory for other scripts: pages,
@@ -60,8 +60,17 @@ there; set `SCANTAILOR_BATCH` to use another.
 
 ```
 ~/git/scan-pipeline/newscan.py
+~/git/scan-pipeline/newscan.py --pdf "Pattern_Breakers (Lynn).pdf"
 ~/git/scan-pipeline/scantailor-advanced/build/scantailor-advanced ~/scan/TGR/TGR.ScanTailor
 ```
+
+`--pdf` takes a file directly in `D:\scan`, by its exact name, with or without `.pdf`; a name it
+can't find gets the nearest names, and nothing moves. The move deletes the Windows original once
+its SHA-256 is checked, and `D:\scan` holds more than scans, so `newscan.py </dev/null` (with or
+without `--pdf`) says what would be taken and stops there.
+
+The whole road from here to the book in the library, in order and with its commands, is the
+**build-book** skill (`/build-book ACRONYM [PDF]`, source `~/booktext/build-book/`).
 
 ## Pencil in a book
 

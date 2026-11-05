@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-r"""newscan.py: take the newest scan off the Windows machine and extract its page images.
+r"""newscan.py: take a scan off the Windows machine and extract its page images.
 
-1. Reports the newest PDF in D:\scan on lab-i8700k: its name, date and size.
+1. Reports the newest PDF in D:\scan on lab-i8700k, or the one --pdf names: its name, date and
+   size. D:\scan holds more than scans, so with no acronym on stdin (</dev/null) this reports
+   what would be taken and moves nothing.
 2. Asks for an acronym; Enter with none cancels. One already used in ~/scan (in any case) is
    refused. A name the scan inventory already gives a book on Windows is
    flagged and asks again.
@@ -18,9 +20,11 @@ r"""newscan.py: take the newest scan off the Windows machine and extract its pag
 6. Runs ScanTailor's stages on it through Margins (deskew, content box, ...), without the
    GUI, by scantailor-batch (scantailor.process), and says how to open it in the GUI.
 
-Usage: newscan.py            steps 1-6 for the newest scan
-       newscan.py ACRONYM    steps 5-6 for ~/scan/ACRONYM's images, keeping its
-                             .ScanTailor if it has one (e.g. a folder extracted earlier)
+Usage: newscan.py              steps 1-6 for the newest scan
+       newscan.py --pdf NAME   steps 1-6 for the PDF NAME in D:\scan, whatever its date:
+                               NAME, NAME.pdf or D:\scan\NAME.pdf, matched exactly
+       newscan.py ACRONYM      steps 5-6 for ~/scan/ACRONYM's images, keeping its
+                               .ScanTailor if it has one (e.g. a folder extracted earlier)
 """
 import base64
 import concurrent.futures
@@ -97,21 +101,54 @@ def ago(minutes):
     return f"{minutes // (24 * 60)} days ago"
 
 
-# ---------------------------------------------------------------- 1. the newest PDF
+# ---------------------------------------------------------------- 1. the PDF
+
+PDF_FIELDS = """[pscustomobject]@{
+            name = $f.Name; size = $f.Length
+            date = $f.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss (ddd)')
+            minutes = [int][Math]::Floor(((Get-Date) - $f.LastWriteTime).TotalMinutes)
+        } | ConvertTo-Json -Compress"""
+
 
 def latest_pdf():
     out = powershell(f"""
         $f = Get-ChildItem -LiteralPath {ps_quote(WIN_DIR)} -File |
              Where-Object {{ $_.Extension -eq '.pdf' }} |
              Sort-Object LastWriteTime | Select-Object -Last 1
-        if ($f) {{
-            [pscustomobject]@{{
-                name = $f.Name; size = $f.Length
-                date = $f.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss (ddd)')
-                minutes = [int][Math]::Floor(((Get-Date) - $f.LastWriteTime).TotalMinutes)
-            }} | ConvertTo-Json -Compress
+        if ($f) {{ {PDF_FIELDS} }}""").strip()
+    return json.loads(out) if out else None
+
+
+def pdf_name(given):
+    r"""The file name in NAME, NAME.pdf or D:\scan\NAME.pdf. Only D:\scan's own files will do,
+    since the move deletes the original, so anything else that names a folder is refused."""
+    name = given.strip()
+    prefix = WIN_DIR + "\\"
+    if name.replace("/", "\\").lower().startswith(prefix.lower()):
+        name = name[len(prefix):]
+    if not name.strip(". ") or re.search(r'[\\/:*?"<>|]', name):
+        die(f"{given!r} isn't the name of a PDF in {WIN_DIR}")
+    return name if name.lower().endswith(".pdf") else name + ".pdf"
+
+
+def named_pdf(name):
+    win_path = f"{WIN_DIR}\\{name}"
+    out = powershell(f"""
+        if (Test-Path -LiteralPath {ps_quote(win_path)} -PathType Leaf) {{
+            $f = Get-Item -LiteralPath {ps_quote(win_path)}
+            {PDF_FIELDS}
         }}""").strip()
     return json.loads(out) if out else None
+
+
+def near_pdfs(name, limit=8):
+    """For a name not found: the PDFs in D:\\scan with it in their names, else the newest."""
+    names = powershell(f"""
+        Get-ChildItem -LiteralPath {ps_quote(WIN_DIR)} -File |
+        Where-Object {{ $_.Extension -eq '.pdf' }} | Sort-Object LastWriteTime -Descending |
+        ForEach-Object {{ $_.Name }}""").splitlines()
+    stem = name[:-4].lower()
+    return [n for n in names if stem in n.lower()][:limit] or names[:limit]
 
 
 # ---------------------------------------------------------------- 2. the acronym
@@ -375,7 +412,10 @@ def make_project(folder):
 
 
 def main(args):
-    if len(args) > 1 or (args and args[0].startswith("-")):
+    name = None
+    if len(args) == 2 and args[0] == "--pdf":
+        name, args = pdf_name(args[1]), []
+    elif len(args) > 1 or (args and args[0].startswith("-")):
         print(__doc__.split("Usage:")[1].strip(), file=sys.stderr)
         return 2
     if args:
@@ -384,13 +424,15 @@ def main(args):
             die(f"{folder} isn't a folder")
         return 0 if make_project(folder) else 1
     try:
-        pdf = latest_pdf()
+        pdf = named_pdf(name) if name else latest_pdf()
+        if name and not pdf:
+            die(f"no {name} in {WIN_DIR} on {HOST}. Nearest:\n  " + "\n  ".join(near_pdfs(name)))
     except RuntimeError as e:
         die(str(e))
     if not pdf:
         print(f"No PDFs in {WIN_DIR} on {HOST}.")
         return 0
-    print(f"Newest PDF in {WIN_DIR} on {HOST}:\n"
+    print(f"{'PDF' if name else 'Newest PDF'} in {WIN_DIR} on {HOST}:\n"
           f"  name  {pdf['name']}\n"
           f"  date  {pdf['date']}, {ago(pdf['minutes'])}\n"
           f"  size  {human(pdf['size'])} ({pdf['size']:,} bytes)")
