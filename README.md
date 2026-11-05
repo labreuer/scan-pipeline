@@ -26,6 +26,8 @@ ScanTailor project. The book folders stay in `~/scan`; this repo holds only the 
 - **`st_lean.py`** measures how far a project's pages lean and sets the shear that takes it out;
   **`st_marks.py`** finds the marks that set its content boxes and narrows the boxes named (below,
   "Straight pages and clean boxes").
+- **`st_weight.py`** measures how evenly a project's type came out and sets a threshold for each
+  page to even it (below, "Even weight").
 - **`stview.py`** shows in a browser, page by page, where a project's content boxes sit on the
   scans and where ScanTailor's Page Layout stage will put them (below). `~/bin/stview.py`
   links to it.
@@ -133,6 +135,31 @@ hand-set box put back to automatic, so boxes come after it. `st_marks.py find` w
 real print for marks now and then (the i of "ing" on an indented page, the ear of a g), so `apply`
 touches only pages named, and refuses a report older than the box. `--rows` sets a page's sides from
 its full rows of print, for a reader's notes in a margin. Their docstrings say how each decides.
+
+## Even weight: `st_weight.py`
+
+One threshold for a book gives even thresholds, not even type: Otsu cuts at much the same darkness on
+every page, and what differs is the strokes on the paper. Jonas's *The Gnostic Religion* runs from 6.8 px
+of stem to 8.7, a page's weight following the raw scan's stem at half darkness (0.97), the two sides of a
+printing sheet 6% apart, and no one setting helps: the spread is the same from -30 to +30.
+
+```
+st_weight.py report PROJECT                   # how even the output is, and whether a 4-page cycle explains it
+st_weight.py fit PROJECT WORK_DIR --tsv OUT.tsv   # the book at each setting, in copies: 45 s each
+st_weight.py fit PROJECT WORK_DIR --apply     # the same sweep; writes each page's setting
+scantailor-batch --through output --jobs 16 -q PROJECT
+st_weight.py report PROJECT
+```
+
+Run it last of ScanTailor's steps, after `st_lean.py`, `st_marks.py` and the margins, since a page's box
+sets its Otsu level, and before the line detector. It moves nothing on the page. It measures lines, not
+pages, against the median of their own type size, which it finds from the lines' x-heights, so a page of
+notes doesn't read light. The book's overall weight stays where the project's median setting has it.
+On Jonas: settings -28 to +26, 343 of 366 pages changed, 2 * ink / perimeter's sd 5.2% to 1.3%, the 4-page
+cycle's share of the variance 22% to 1%, letters about even (221 fusions undone, 87 fragments mended; 168
+fusions made, 106 fragments lost). Judge a fit by that second measure, as `report` gives it: the stem is
+what was tuned and flatters it. It can't reach a page's insides, where top to bottom can drift 10%. The
+docstring says how it decides.
 
 ## Alignment and margins: `stview.py`
 
