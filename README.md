@@ -135,6 +135,7 @@ st_marks.py apply PROJECT REPORT.json --pages 193,231 --rows 73,78
 scantailor-batch --through output --jobs 16 -q PROJECT
 st_marks.py lost PROJECT OLD_PROJECT OLD_OUT --pages 193,231   # what went
 st_marks.py find PROJECT NEW_REPORT.json
+st_marks.py edges PROJECT [--tsv OUT.tsv]    # what find misses: places to look at
 ```
 
 PAGES count from 1 in the project's order. ScanTailor shears by tan(angle / 2), so a page leaning L
@@ -144,6 +145,13 @@ hand-set box put back to automatic, so boxes come after it. `st_marks.py find` w
 real print for marks now and then (the i of "ing" on an indented page, the ear of a g), so `apply`
 touches only pages named, and refuses a report older than the box. `--rows` sets a page's sides from
 its full rows of print, for a reader's notes in a margin. Their docstrings say how each decides.
+
+`edges` reads a box against its ink on all four sides (`find`'s pads are left and right only, and pencil
+too pale for the threshold leaves a box standing past the ink), lists boxes on pages with no ink, and
+ink well past the text's edge on a run or two of rows, where a reader's pencil joins the print. Run on
+the boxes of Strauss's *Continual Permutations of Action* before they were cut, it listed 19 of 287 pages,
+among them all 8 that were cut by hand or emptied; on Jonas's, 32 of 373. Most of the rest are print, and
+the smallest flecks are left to `find`, so run both and look at what they list.
 
 ## Even weight: `st_weight.py`
 

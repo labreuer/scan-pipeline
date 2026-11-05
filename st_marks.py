@@ -5,6 +5,7 @@ boxes named.
 usage: st_marks.py find PROJECT REPORT.json [--crops SHEET.png] [--jobs N]
        st_marks.py apply PROJECT REPORT.json --pages PAGES [--rows PAGES] [--pad PX]
        st_marks.py lost PROJECT OLD_PROJECT OLD_OUT --pages PAGES
+       st_marks.py edges PROJECT [--tsv OUT.tsv] [--jobs N]
 
 A box is set by the outermost ink ScanTailor's content detection takes for content, and one fleck
 outside the print widens or lengthens the page, and through the page size every page in the book.
@@ -44,6 +45,15 @@ spanning the measure with both ends near the medians, the print's width checked 
 lost compares the pages named with an earlier output of the same scan (its project and output
 folder): the ink each has lost, and its largest pieces. Those should be the marks. A box narrowed
 can move Otsu's threshold by a level, which shows as thousands of pixels in pieces of a few each.
+
+edges lists what find can't: a box read against its ink on all four sides, for pencil too pale for the
+threshold, which leaves a box standing past the ink (find's pads are left and right only; Strauss's p.
+206, 79 px at the foot); a box on a page with no ink, from faint specks; and ink well past the text's
+edge on a run or two of rows, where a reader's pencil is joined to the print and too big for a mark. It
+leaves the smallest flecks to find. On Strauss's boxes before they were cut it listed 19 of 287 pages, all
+8 that were cut by hand or emptied, and on Jonas's 32 of 373. The rest are mostly print (a title wider
+than the text, a table), so these are places to look at. Nothing is written to the project: cut a box by
+hand, or use apply's --rows.
 """
 import argparse, json, os, statistics, sys
 from multiprocessing import Pool
@@ -66,6 +76,10 @@ RUN_GAP = 100       # px clear of the next row of ink
 RUN_H, RUN_W = 50, 150  # px: a row of ink no taller, no wider than this may be a mark
 CENTRED = 120       # px off the text's centre: nearer is a folio
 SHOW = 3            # px: a mark's gain under this is not reported as proposing anything
+PAST = 8            # px: edges lists a box standing further than this past its ink
+OUT = 25            # px: edges lists ink further than this past the text's edge
+RUN = 6             # px: rows of ink closer than this are one run, for edges
+FEW = 2             # runs of rows: edges takes ink past the text's edge on more than this for print
 
 
 def pages_of(spec):
@@ -312,6 +326,69 @@ def apply(a):
     print(f"{a.project}: {len(plan)} boxes narrowed. Run scantailor-batch --through output, then find again with a new report.")
 
 
+def past_edge(rows, ends, past):
+    """How far ink stands past the text's edge, and at which row, if it does so on a run or two of rows
+    alone: print that hangs out (a note's number, an index) does it all down a page."""
+    on = rows[past]
+    if not len(on) or (np.diff(on) >= RUN).sum() + 1 > FEW:
+        return None
+    return on[np.abs(ends[past] - np.median(ends)).argmax()]
+
+
+def edge_page(job):
+    k, fn, name, box = job
+    a = np.array(Image.open(fn).convert("1")) == 0
+    if a.sum() < 200:
+        return dict(k=k, name=name, blank=True, box=box)
+    x, y, w, h = box
+    ys, xs = np.where(a)
+    pads = dict(head=ys.min() - y, foot=y + h - 1 - ys.max(), left=xs.min() - x, right=x + w - 1 - xs.max())
+    rows = np.where(a.any(1))[0]
+    firsts, lasts = a[rows].argmax(1), a.shape[1] - 1 - a[rows][:, ::-1].argmax(1)
+    edge_l, edge_r = np.percentile(firsts, 10), np.percentile(lasts, 90)
+    at_l = past_edge(rows, firsts, firsts < edge_l - OUT)
+    at_r = past_edge(rows, lasts, lasts > edge_r + OUT)
+    out = {}
+    if at_l is not None:
+        out["left"] = (round(float(edge_l - firsts.min())), int(at_l))
+    if at_r is not None:
+        out["right"] = (round(float(lasts.max() - edge_r)), int(at_r))
+    return dict(k=k, name=name, blank=False, box=box, pads={s: round(float(v)) for s, v in pads.items()}, out=out)
+
+
+def edge_notes(r):
+    notes = [f"box {v} px past the ink at the {s}" for s, v in r["pads"].items() if v > PAST]
+    notes += [f"ink {v} px past the text's {s} edge at y {y}" for s, (v, y) in r["out"].items()]
+    return notes
+
+
+def edges(a):
+    p = Project.load(a.project)
+    folder = output_folder(a.project, p)
+    jobs = []
+    for k, pg in enumerate(p.pages):
+        if pg.select_content.is_empty:
+            continue
+        oc = pg.output.element.find("output-params/image/content-rect")
+        if oc is None:
+            sys.exit(f"{pg.file.name} has no record of an output: run scantailor-batch --through output first")
+        jobs.append((k, image(folder, pg), pg.file.name, tuple(float(oc.get(c)) for c in ("x", "y", "width", "height"))))
+    with Pool(a.jobs) as pool:
+        res = pool.map(edge_page, jobs, chunksize=2)
+    rows = []
+    for r in res:
+        notes = [f"a box of {r['box'][2]:.0f} x {r['box'][3]:.0f} on a page with no ink"] if r["blank"] else edge_notes(r)
+        if notes:
+            rows.append((r["k"] + 1, r["name"], "; ".join(notes)))
+    for n, name, note in rows:
+        print(f"  {n} {name}: {note}")
+    print(f"{len(rows)} of {len(res)} boxed pages to look at")
+    if a.tsv:
+        with open(a.tsv, "w") as f:
+            f.write("page\timage\tnotes\n")
+            f.writelines(f"{n}\t{name}\t{note}\n" for n, name, note in rows)
+
+
 def lost(a):
     new = Project.load(a.project)
     old = Project.load(a.old_project)
@@ -354,6 +431,11 @@ def main():
     h.add_argument("old_out")
     h.add_argument("--pages", required=True)
     h.set_defaults(run=lost)
+    e = sub.add_parser("edges")
+    e.add_argument("project")
+    e.add_argument("--tsv")
+    e.add_argument("--jobs", type=int, default=16)
+    e.set_defaults(run=edges)
     a = ap.parse_args()
     a.run(a)
 
